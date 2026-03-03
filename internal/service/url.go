@@ -22,12 +22,18 @@ type URLRepository interface {
 	FindByCode(ctx context.Context, code string) (*model.URL, error)
 }
 
-type URLService struct {
-	repo URLRepository
+type URLCache interface {
+	Get(ctx context.Context, code string) (string, error)
+	Set(ctx context.Context, code string, originalURL string) error
 }
 
-func NewURLService(repo URLRepository) *URLService {
-	return &URLService{repo: repo}
+type URLService struct {
+	repo  URLRepository
+	cache URLCache
+}
+
+func NewURLService(repo URLRepository, cache URLCache) *URLService {
+	return &URLService{repo: repo, cache: cache}
 }
 
 func (s *URLService) Shorten(ctx context.Context, originalURL string) (*model.URL, error) {
@@ -49,6 +55,12 @@ func (s *URLService) Shorten(ctx context.Context, originalURL string) (*model.UR
 }
 
 func (s *URLService) Resolve(ctx context.Context, code string) (string, error) {
+	// 1. Проверяем кеш
+	if cached, err := s.cache.Get(ctx, code); err == nil {
+		return cached, nil
+	}
+
+	// 2. Не в кеше — идём в БД
 	url, err := s.repo.FindByCode(ctx, code)
 	if err != nil {
 		return "", err
@@ -57,6 +69,9 @@ func (s *URLService) Resolve(ctx context.Context, code string) (string, error) {
 	if url.ExpiresAt != nil && url.ExpiresAt.Before(time.Now()) {
 		return "", ErrURLExpired
 	}
+
+	// 3. Сохраняем в кеш (ошибку кеша игнорируем — не критично)
+	s.cache.Set(ctx, code, url.OriginalURL)
 
 	return url.OriginalURL, nil
 }

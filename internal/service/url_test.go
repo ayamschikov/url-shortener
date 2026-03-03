@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -25,6 +26,25 @@ func (m *mockRepo) FindByCode(ctx context.Context, code string) (*model.URL, err
 	return m.findByCodeFunc(ctx, code)
 }
 
+type mockCache struct {
+	getFunc func(ctx context.Context, code string) (string, error)
+	setFunc func(ctx context.Context, code string, originalURL string) error
+}
+
+func (m *mockCache) Get(ctx context.Context, code string) (string, error) {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, code)
+	}
+	return "", errors.New("cache miss")
+}
+
+func (m *mockCache) Set(ctx context.Context, code string, originalURL string) error {
+	if m.setFunc != nil {
+		return m.setFunc(ctx, code, originalURL)
+	}
+	return nil
+}
+
 func TestShorten_Success(t *testing.T) {
 	repo := &mockRepo{
 		saveFunc: func(ctx context.Context, url *model.URL) error {
@@ -34,7 +54,7 @@ func TestShorten_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo)
+	svc := NewURLService(repo, &mockCache{})
 	url, err := svc.Shorten(context.Background(), "https://google.com")
 
 	if err != nil {
@@ -60,7 +80,7 @@ func TestResolve_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo)
+	svc := NewURLService(repo, &mockCache{})
 	originalURL, err := svc.Resolve(context.Background(), "abc12345")
 
 	if err != nil {
@@ -78,7 +98,7 @@ func TestResolve_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo)
+	svc := NewURLService(repo, &mockCache{})
 	_, err := svc.Resolve(context.Background(), "notexist")
 
 	if err != repository.ErrNotFound {
@@ -99,10 +119,67 @@ func TestResolve_Expired(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo)
+	svc := NewURLService(repo, &mockCache{})
 	_, err := svc.Resolve(context.Background(), "expired1")
 
 	if err != ErrURLExpired {
 		t.Errorf("expected ErrURLExpired, got %v", err)
+	}
+}
+
+func TestResolve_CacheHit(t *testing.T) {
+	dbCalled := false
+	repo := &mockRepo{
+		findByCodeFunc: func(ctx context.Context, code string) (*model.URL, error) {
+			dbCalled = true
+			return nil, errors.New("should not be called")
+		},
+	}
+	c := &mockCache{
+		getFunc: func(ctx context.Context, code string) (string, error) {
+			return "https://google.com", nil
+		},
+	}
+
+	svc := NewURLService(repo, c)
+	url, err := svc.Resolve(context.Background(), "cached1")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if url != "https://google.com" {
+		t.Errorf("expected https://google.com, got %s", url)
+	}
+	if dbCalled {
+		t.Error("expected database NOT to be called when cache hits")
+	}
+}
+
+func TestResolve_CacheMiss_ThenSetsCache(t *testing.T) {
+	cached := false
+	repo := &mockRepo{
+		findByCodeFunc: func(ctx context.Context, code string) (*model.URL, error) {
+			return &model.URL{
+				ID:          1,
+				Code:        code,
+				OriginalURL: "https://google.com",
+			}, nil
+		},
+	}
+	c := &mockCache{
+		setFunc: func(ctx context.Context, code string, originalURL string) error {
+			cached = true
+			return nil
+		},
+	}
+
+	svc := NewURLService(repo, c)
+	_, err := svc.Resolve(context.Background(), "notcached")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !cached {
+		t.Error("expected cache.Set to be called after DB lookup")
 	}
 }
