@@ -1,21 +1,28 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ayamschikov/url-shortener/internal/model"
 	"github.com/ayamschikov/url-shortener/internal/repository"
 	"github.com/ayamschikov/url-shortener/internal/service"
 )
 
-type URLHandler struct {
-	service *service.URLService
+type URLService interface {
+	Shorten(ctx context.Context, originalURL string) (*model.URL, error)
+	Resolve(ctx context.Context, code string) (string, error)
 }
 
-func NewURLHandler(service *service.URLService) *URLHandler {
+type URLHandler struct {
+	service URLService
+}
+
+func NewURLHandler(service URLService) *URLHandler {
 	return &URLHandler{service: service}
 }
 
