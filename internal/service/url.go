@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ayamschikov/url-shortener/internal/model"
-	"github.com/ayamschikov/url-shortener/internal/repository"
 )
 
 const (
@@ -18,11 +17,16 @@ const (
 
 var ErrURLExpired = errors.New("url has expired")
 
-type URLService struct {
-	repo *repository.URLRepository
+type URLRepository interface {
+	Save(ctx context.Context, url *model.URL) error
+	FindByCode(ctx context.Context, code string) (*model.URL, error)
 }
 
-func NewURLService(repo *repository.URLRepository) *URLService {
+type URLService struct {
+	repo URLRepository
+}
+
+func NewURLService(repo URLRepository) *URLService {
 	return &URLService{repo: repo}
 }
 
