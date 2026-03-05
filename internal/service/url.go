@@ -4,18 +4,27 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"math/big"
+	"regexp"
 	"time"
 
 	"github.com/ayamschikov/url-shortener/internal/model"
 )
 
 const (
-	codeLength = 8
-	alphabet   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	codeLength   = 8
+	aliasMinLen  = 3
+	aliasMaxLen  = 20
+	alphabet     = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-var ErrURLExpired = errors.New("url has expired")
+var (
+	ErrURLExpired   = errors.New("url has expired")
+	ErrAliasTaken   = errors.New("alias already taken")
+	ErrAliasInvalid = errors.New("invalid alias")
+	aliasRegex      = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+)
 
 type URLRepository interface {
 	Save(ctx context.Context, url *model.URL) error
@@ -42,10 +51,24 @@ func NewURLService(repo URLRepository, cache URLCache, clicks ClickRepository) *
 	return &URLService{repo: repo, cache: cache, clicks: clicks}
 }
 
-func (s *URLService) Shorten(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error) {
-	code, err := generateCode()
-	if err != nil {
-		return nil, err
+func (s *URLService) Shorten(ctx context.Context, originalURL string, alias string, expiresAt *time.Time) (*model.URL, error) {
+	var code string
+	if alias != "" {
+		if err := validateAlias(alias); err != nil {
+			return nil, err
+		}
+		// Проверяем не занят ли alias
+		_, err := s.repo.FindByCode(ctx, alias)
+		if err == nil {
+			return nil, ErrAliasTaken
+		}
+		code = alias
+	} else {
+		generated, err := generateCode()
+		if err != nil {
+			return nil, err
+		}
+		code = generated
 	}
 
 	url := &model.URL{
@@ -59,6 +82,16 @@ func (s *URLService) Shorten(ctx context.Context, originalURL string, expiresAt 
 	}
 
 	return url, nil
+}
+
+func validateAlias(alias string) error {
+	if len(alias) < aliasMinLen || len(alias) > aliasMaxLen {
+		return fmt.Errorf("%w: length must be between %d and %d", ErrAliasInvalid, aliasMinLen, aliasMaxLen)
+	}
+	if !aliasRegex.MatchString(alias) {
+		return fmt.Errorf("%w: only letters, digits, hyphens and underscores allowed", ErrAliasInvalid)
+	}
+	return nil
 }
 
 func (s *URLService) Resolve(ctx context.Context, code string) (*model.URL, error) {

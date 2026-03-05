@@ -17,13 +17,13 @@ import (
 )
 
 type mockService struct {
-	shortenFunc    func(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error)
+	shortenFunc    func(ctx context.Context, originalURL string, alias string, expiresAt *time.Time) (*model.URL, error)
 	resolveFunc    func(ctx context.Context, code string) (*model.URL, error)
 	trackClickFunc func(ctx context.Context, click *model.Click)
 }
 
-func (m *mockService) Shorten(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error) {
-	return m.shortenFunc(ctx, originalURL, expiresAt)
+func (m *mockService) Shorten(ctx context.Context, originalURL string, alias string, expiresAt *time.Time) (*model.URL, error) {
+	return m.shortenFunc(ctx, originalURL, alias, expiresAt)
 }
 
 func (m *mockService) Resolve(ctx context.Context, code string) (*model.URL, error) {
@@ -42,7 +42,7 @@ func (m *mockService) GetStats(ctx context.Context, code string) (*model.URLStat
 
 func TestShorten_Success(t *testing.T) {
 	svc := &mockService{
-		shortenFunc: func(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error) {
+		shortenFunc: func(ctx context.Context, originalURL string, alias string, expiresAt *time.Time) (*model.URL, error) {
 			return &model.URL{Code: "abc12345", OriginalURL: originalURL, ExpiresAt: expiresAt}, nil
 		},
 	}
@@ -92,7 +92,7 @@ func TestShorten_InvalidBody(t *testing.T) {
 
 func TestShorten_ServiceError(t *testing.T) {
 	svc := &mockService{
-		shortenFunc: func(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error) {
+		shortenFunc: func(ctx context.Context, originalURL string, alias string, expiresAt *time.Time) (*model.URL, error) {
 			return nil, errors.New("db error")
 		},
 	}

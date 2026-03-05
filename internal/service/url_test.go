@@ -65,7 +65,7 @@ func TestShorten_Success(t *testing.T) {
 	}
 
 	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
-	url, err := svc.Shorten(context.Background(), "https://google.com", nil)
+	url, err := svc.Shorten(context.Background(), "https://google.com", "", nil)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -191,5 +191,60 @@ func TestResolve_CacheMiss_ThenSetsCache(t *testing.T) {
 	}
 	if !cached {
 		t.Error("expected cache.Set to be called after DB lookup")
+	}
+}
+
+func TestShorten_WithAlias(t *testing.T) {
+	repo := &mockRepo{
+		findByCodeFunc: func(ctx context.Context, code string) (*model.URL, error) {
+			return nil, repository.ErrNotFound
+		},
+		saveFunc: func(ctx context.Context, url *model.URL) error {
+			url.ID = 1
+			return nil
+		},
+	}
+
+	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
+	url, err := svc.Shorten(context.Background(), "https://google.com", "my-link", nil)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if url.Code != "my-link" {
+		t.Errorf("expected code my-link, got %s", url.Code)
+	}
+}
+
+func TestShorten_AliasTaken(t *testing.T) {
+	repo := &mockRepo{
+		findByCodeFunc: func(ctx context.Context, code string) (*model.URL, error) {
+			return &model.URL{ID: 1, Code: code}, nil // уже существует
+		},
+	}
+
+	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
+	_, err := svc.Shorten(context.Background(), "https://google.com", "taken", nil)
+
+	if !errors.Is(err, ErrAliasTaken) {
+		t.Errorf("expected ErrAliasTaken, got %v", err)
+	}
+}
+
+func TestShorten_AliasTooShort(t *testing.T) {
+	svc := NewURLService(&mockRepo{}, &mockCache{}, &mockClickRepo{})
+	_, err := svc.Shorten(context.Background(), "https://google.com", "ab", nil)
+
+	if !errors.Is(err, ErrAliasInvalid) {
+		t.Errorf("expected ErrAliasInvalid, got %v", err)
+	}
+}
+
+func TestShorten_AliasInvalidChars(t *testing.T) {
+	svc := NewURLService(&mockRepo{}, &mockCache{}, &mockClickRepo{})
+	_, err := svc.Shorten(context.Background(), "https://google.com", "my link!", nil)
+
+	if !errors.Is(err, ErrAliasInvalid) {
+		t.Errorf("expected ErrAliasInvalid, got %v", err)
 	}
 }

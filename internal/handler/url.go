@@ -16,7 +16,7 @@ import (
 )
 
 type URLService interface {
-	Shorten(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error)
+	Shorten(ctx context.Context, originalURL string, alias string, expiresAt *time.Time) (*model.URL, error)
 	Resolve(ctx context.Context, code string) (*model.URL, error)
 	TrackClick(ctx context.Context, click *model.Click)
 	GetStats(ctx context.Context, code string) (*model.URLStats, error)
@@ -32,6 +32,7 @@ func NewURLHandler(service URLService) *URLHandler {
 
 type shortenRequest struct {
 	URL       string `json:"url"`
+	Alias     string `json:"alias,omitempty"`
 	ExpiresIn string `json:"expires_in,omitempty"`
 }
 
@@ -67,7 +68,15 @@ func (h *URLHandler) Shorten(w http.ResponseWriter, r *http.Request) {
 		expiresAt = &t
 	}
 
-	url, err := h.service.Shorten(r.Context(), req.URL, expiresAt)
+	url, err := h.service.Shorten(r.Context(), req.URL, req.Alias, expiresAt)
+	if errors.Is(err, service.ErrAliasInvalid) {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+	if errors.Is(err, service.ErrAliasTaken) {
+		writeJSON(w, http.StatusConflict, errorResponse{Error: "alias already taken"})
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "failed to shorten url"})
 		return
