@@ -42,7 +42,7 @@ func NewURLService(repo URLRepository, cache URLCache, clicks ClickRepository) *
 	return &URLService{repo: repo, cache: cache, clicks: clicks}
 }
 
-func (s *URLService) Shorten(ctx context.Context, originalURL string) (*model.URL, error) {
+func (s *URLService) Shorten(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error) {
 	code, err := generateCode()
 	if err != nil {
 		return nil, err
@@ -51,6 +51,7 @@ func (s *URLService) Shorten(ctx context.Context, originalURL string) (*model.UR
 	url := &model.URL{
 		Code:        code,
 		OriginalURL: originalURL,
+		ExpiresAt:   expiresAt,
 	}
 
 	if err := s.repo.Save(ctx, url); err != nil {

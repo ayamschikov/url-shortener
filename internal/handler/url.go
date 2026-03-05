@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -15,7 +16,7 @@ import (
 )
 
 type URLService interface {
-	Shorten(ctx context.Context, originalURL string) (*model.URL, error)
+	Shorten(ctx context.Context, originalURL string, expiresAt *time.Time) (*model.URL, error)
 	Resolve(ctx context.Context, code string) (*model.URL, error)
 	TrackClick(ctx context.Context, click *model.Click)
 	GetStats(ctx context.Context, code string) (*model.URLStats, error)
@@ -30,11 +31,13 @@ func NewURLHandler(service URLService) *URLHandler {
 }
 
 type shortenRequest struct {
-	URL string `json:"url"`
+	URL       string `json:"url"`
+	ExpiresIn string `json:"expires_in,omitempty"`
 }
 
 type shortenResponse struct {
-	ShortURL string `json:"short_url"`
+	ShortURL  string  `json:"short_url"`
+	ExpiresAt *string `json:"expires_at,omitempty"`
 }
 
 type errorResponse struct {
@@ -53,13 +56,29 @@ func (h *URLHandler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := h.service.Shorten(r.Context(), req.URL)
+	var expiresAt *time.Time
+	if req.ExpiresIn != "" {
+		duration, err := time.ParseDuration(req.ExpiresIn)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid expires_in format, use e.g. 1h, 24h, 168h"})
+			return
+		}
+		t := time.Now().Add(duration)
+		expiresAt = &t
+	}
+
+	url, err := h.service.Shorten(r.Context(), req.URL, expiresAt)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "failed to shorten url"})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, shortenResponse{ShortURL: url.Code})
+	resp := shortenResponse{ShortURL: url.Code}
+	if url.ExpiresAt != nil {
+		formatted := url.ExpiresAt.Format(time.RFC3339)
+		resp.ExpiresAt = &formatted
+	}
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (h *URLHandler) Resolve(w http.ResponseWriter, r *http.Request) {

@@ -65,7 +65,7 @@ func TestShorten_Success(t *testing.T) {
 	}
 
 	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
-	url, err := svc.Shorten(context.Background(), "https://google.com")
+	url, err := svc.Shorten(context.Background(), "https://google.com", nil)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
