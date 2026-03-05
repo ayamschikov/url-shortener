@@ -45,6 +45,16 @@ func (m *mockCache) Set(ctx context.Context, code string, originalURL string) er
 	return nil
 }
 
+type mockClickRepo struct{}
+
+func (m *mockClickRepo) Save(ctx context.Context, click *model.Click) error {
+	return nil
+}
+
+func (m *mockClickRepo) GetStatsByURLID(ctx context.Context, urlID int64) (int64, error) {
+	return 0, nil
+}
+
 func TestShorten_Success(t *testing.T) {
 	repo := &mockRepo{
 		saveFunc: func(ctx context.Context, url *model.URL) error {
@@ -54,7 +64,7 @@ func TestShorten_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo, &mockCache{})
+	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
 	url, err := svc.Shorten(context.Background(), "https://google.com")
 
 	if err != nil {
@@ -80,14 +90,14 @@ func TestResolve_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo, &mockCache{})
-	originalURL, err := svc.Resolve(context.Background(), "abc12345")
+	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
+	url, err := svc.Resolve(context.Background(), "abc12345")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if originalURL != "https://google.com" {
-		t.Errorf("expected https://google.com, got %s", originalURL)
+	if url.OriginalURL != "https://google.com" {
+		t.Errorf("expected https://google.com, got %s", url.OriginalURL)
 	}
 }
 
@@ -98,7 +108,7 @@ func TestResolve_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo, &mockCache{})
+	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
 	_, err := svc.Resolve(context.Background(), "notexist")
 
 	if err != repository.ErrNotFound {
@@ -119,7 +129,7 @@ func TestResolve_Expired(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo, &mockCache{})
+	svc := NewURLService(repo, &mockCache{}, &mockClickRepo{})
 	_, err := svc.Resolve(context.Background(), "expired1")
 
 	if err != ErrURLExpired {
@@ -141,14 +151,14 @@ func TestResolve_CacheHit(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo, c)
+	svc := NewURLService(repo, c, &mockClickRepo{})
 	url, err := svc.Resolve(context.Background(), "cached1")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if url != "https://google.com" {
-		t.Errorf("expected https://google.com, got %s", url)
+	if url.OriginalURL != "https://google.com" {
+		t.Errorf("expected https://google.com, got %s", url.OriginalURL)
 	}
 	if dbCalled {
 		t.Error("expected database NOT to be called when cache hits")
@@ -173,7 +183,7 @@ func TestResolve_CacheMiss_ThenSetsCache(t *testing.T) {
 		},
 	}
 
-	svc := NewURLService(repo, c)
+	svc := NewURLService(repo, c, &mockClickRepo{})
 	_, err := svc.Resolve(context.Background(), "notcached")
 
 	if err != nil {

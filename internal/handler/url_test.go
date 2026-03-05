@@ -16,16 +16,27 @@ import (
 )
 
 type mockService struct {
-	shortenFunc func(ctx context.Context, originalURL string) (*model.URL, error)
-	resolveFunc func(ctx context.Context, code string) (string, error)
+	shortenFunc    func(ctx context.Context, originalURL string) (*model.URL, error)
+	resolveFunc    func(ctx context.Context, code string) (*model.URL, error)
+	trackClickFunc func(ctx context.Context, click *model.Click)
 }
 
 func (m *mockService) Shorten(ctx context.Context, originalURL string) (*model.URL, error) {
 	return m.shortenFunc(ctx, originalURL)
 }
 
-func (m *mockService) Resolve(ctx context.Context, code string) (string, error) {
+func (m *mockService) Resolve(ctx context.Context, code string) (*model.URL, error) {
 	return m.resolveFunc(ctx, code)
+}
+
+func (m *mockService) TrackClick(ctx context.Context, click *model.Click) {
+	if m.trackClickFunc != nil {
+		m.trackClickFunc(ctx, click)
+	}
+}
+
+func (m *mockService) GetStats(ctx context.Context, code string) (*model.URLStats, error) {
+	return &model.URLStats{Code: code, OriginalURL: "https://google.com", TotalClicks: 42}, nil
 }
 
 func TestShorten_Success(t *testing.T) {
@@ -109,8 +120,8 @@ func newResolveRequest(code string) *http.Request {
 
 func TestResolve_Success(t *testing.T) {
 	svc := &mockService{
-		resolveFunc: func(ctx context.Context, code string) (string, error) {
-			return "https://google.com", nil
+		resolveFunc: func(ctx context.Context, code string) (*model.URL, error) {
+			return &model.URL{ID: 1, Code: code, OriginalURL: "https://google.com"}, nil
 		},
 	}
 	h := NewURLHandler(svc)
@@ -131,8 +142,8 @@ func TestResolve_Success(t *testing.T) {
 
 func TestResolve_NotFound(t *testing.T) {
 	svc := &mockService{
-		resolveFunc: func(ctx context.Context, code string) (string, error) {
-			return "", repository.ErrNotFound
+		resolveFunc: func(ctx context.Context, code string) (*model.URL, error) {
+			return nil, repository.ErrNotFound
 		},
 	}
 	h := NewURLHandler(svc)
@@ -149,8 +160,8 @@ func TestResolve_NotFound(t *testing.T) {
 
 func TestResolve_Expired(t *testing.T) {
 	svc := &mockService{
-		resolveFunc: func(ctx context.Context, code string) (string, error) {
-			return "", service.ErrURLExpired
+		resolveFunc: func(ctx context.Context, code string) (*model.URL, error) {
+			return nil, service.ErrURLExpired
 		},
 	}
 	h := NewURLHandler(svc)

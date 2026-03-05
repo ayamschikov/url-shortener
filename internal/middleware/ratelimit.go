@@ -3,11 +3,12 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/ayamschikov/url-shortener/internal/httputil"
 )
 
 type RateLimiter struct {
@@ -26,7 +27,7 @@ func NewRateLimiter(client *redis.Client, limit int, window time.Duration) *Rate
 
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := extractIP(r)
+		ip := httputil.ExtractIP(r)
 		key := fmt.Sprintf("ratelimit:%s", ip)
 
 		allowed, err := rl.isAllowed(r.Context(), key)
@@ -62,19 +63,3 @@ func (rl *RateLimiter) isAllowed(ctx context.Context, key string) (bool, error) 
 	return count <= int64(rl.limit), nil
 }
 
-func extractIP(r *http.Request) string {
-	// Сначала проверяем заголовки от прокси/балансировщика
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		return forwarded
-	}
-	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-		return realIP
-	}
-
-	// Fallback — IP из соединения
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return ip
-}

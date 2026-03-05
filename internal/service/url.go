@@ -27,13 +27,19 @@ type URLCache interface {
 	Set(ctx context.Context, code string, originalURL string) error
 }
 
-type URLService struct {
-	repo  URLRepository
-	cache URLCache
+type ClickRepository interface {
+	Save(ctx context.Context, click *model.Click) error
+	GetStatsByURLID(ctx context.Context, urlID int64) (int64, error)
 }
 
-func NewURLService(repo URLRepository, cache URLCache) *URLService {
-	return &URLService{repo: repo, cache: cache}
+type URLService struct {
+	repo   URLRepository
+	cache  URLCache
+	clicks ClickRepository
+}
+
+func NewURLService(repo URLRepository, cache URLCache, clicks ClickRepository) *URLService {
+	return &URLService{repo: repo, cache: cache, clicks: clicks}
 }
 
 func (s *URLService) Shorten(ctx context.Context, originalURL string) (*model.URL, error) {
@@ -54,26 +60,53 @@ func (s *URLService) Shorten(ctx context.Context, originalURL string) (*model.UR
 	return url, nil
 }
 
-func (s *URLService) Resolve(ctx context.Context, code string) (string, error) {
+func (s *URLService) Resolve(ctx context.Context, code string) (*model.URL, error) {
 	// 1. Проверяем кеш
 	if cached, err := s.cache.Get(ctx, code); err == nil {
-		return cached, nil
+		return &model.URL{Code: code, OriginalURL: cached}, nil
 	}
 
 	// 2. Не в кеше — идём в БД
 	url, err := s.repo.FindByCode(ctx, code)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if url.ExpiresAt != nil && url.ExpiresAt.Before(time.Now()) {
-		return "", ErrURLExpired
+		return nil, ErrURLExpired
 	}
 
 	// 3. Сохраняем в кеш (ошибку кеша игнорируем — не критично)
 	s.cache.Set(ctx, code, url.OriginalURL)
 
-	return url.OriginalURL, nil
+	return url, nil
+}
+
+func (s *URLService) TrackClick(ctx context.Context, click *model.Click) {
+	// Запускаем в отдельной goroutine чтобы не замедлять редирект.
+	// Используем context.Background() потому что оригинальный ctx
+	// будет отменён после завершения HTTP ответа.
+	go func() {
+		s.clicks.Save(context.Background(), click)
+	}()
+}
+
+func (s *URLService) GetStats(ctx context.Context, code string) (*model.URLStats, error) {
+	url, err := s.repo.FindByCode(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+
+	totalClicks, err := s.clicks.GetStatsByURLID(ctx, url.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.URLStats{
+		Code:        url.Code,
+		OriginalURL: url.OriginalURL,
+		TotalClicks: totalClicks,
+	}, nil
 }
 
 func generateCode() (string, error) {
