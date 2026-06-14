@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/ayamschikov/url-shortener/internal/metrics"
 	"github.com/ayamschikov/url-shortener/internal/model"
 )
 
@@ -97,8 +98,10 @@ func validateAlias(alias string) error {
 func (s *URLService) Resolve(ctx context.Context, code string) (*model.URL, error) {
 	// 1. Проверяем кеш
 	if cached, err := s.cache.Get(ctx, code); err == nil {
+		metrics.CacheEvents.WithLabelValues("hit").Inc()
 		return &model.URL{Code: code, OriginalURL: cached}, nil
 	}
+	metrics.CacheEvents.WithLabelValues("miss").Inc()
 
 	// 2. Не в кеше — идём в БД
 	url, err := s.repo.FindByCode(ctx, code)

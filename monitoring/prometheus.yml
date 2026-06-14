@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s # как часто Prometheus опрашивает /metrics
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Сам Prometheus (полезно для отладки самого Prometheus).
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # url-shortener бежит локально (make run, :8080). Из контейнера хост
+  # доступен как host.docker.internal (на Linux добавлен extra_hosts в compose).
+  - job_name: url-shortener
+    static_configs:
+      - targets: ["host.docker.internal:8080"]

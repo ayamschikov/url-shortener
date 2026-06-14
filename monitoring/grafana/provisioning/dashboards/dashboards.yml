@@ -1,0 +1,14 @@
+apiVersion: 1
+
+# Подхватывать дашборды из файлов в /var/lib/grafana/dashboards (смонтированы
+# из monitoring/grafana/dashboards). Так дашборд лежит в git и грузится при старте.
+providers:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

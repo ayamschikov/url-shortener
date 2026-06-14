@@ -1,7 +1,7 @@
 include .env
 export
 
-.PHONY: run build test migrate-up migrate-down docker-up docker-down
+.PHONY: run build test migrate-up migrate-down docker-up docker-down monitoring-up monitoring-down load
 
 run:
 	go run ./cmd/server
@@ -23,3 +23,12 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+monitoring-up:
+	docker compose up -d prometheus grafana
+
+monitoring-down:
+	docker compose stop prometheus grafana
+
+load:
+	./monitoring/loadtest.sh
