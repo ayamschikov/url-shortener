@@ -1,0 +1,18 @@
+groups:
+  - name: url-shortener
+    rules:
+      # Симптомный алерт (RED/E): доля 5xx > 5% непрерывно 5 минут.
+      # inactive → pending (условие истинно, ждём for) → firing (держится 5m).
+      - alert: HighErrorRate
+        expr: >
+          100
+          * sum(rate(http_requests_total{job="url-shortener", status=~"5.."}[5m]))
+          / clamp_min(sum(rate(http_requests_total{job="url-shortener"}[5m])), 1)
+          > 5
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "High 5xx error rate on url-shortener"
+          description: "5xx error rate {{ $value | printf \"%.1f\" }}% (>5%) for 5+ minutes."
+          runbook: "Проверь RPS-by-status (4xx vs 5xx) → latency (легла/тормозит) → дашборд БД."

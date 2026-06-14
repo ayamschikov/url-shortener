@@ -1,6 +1,9 @@
 global:
   scrape_interval: 15s # как часто Prometheus опрашивает /metrics
-  evaluation_interval: 15s
+  evaluation_interval: 15s # как часто пересчитываются правила алертов
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
 
 scrape_configs:
   # Сам Prometheus (полезно для отладки самого Prometheus).

@@ -44,6 +44,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alert.rules.yml:/etc/prometheus/alert.rules.yml
     extra_hosts:
       # Чтобы из контейнера достучаться до app, бегущего на хосте (make run).
       - "host.docker.internal:host-gateway"
